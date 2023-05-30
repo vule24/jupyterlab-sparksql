@@ -41,35 +41,38 @@ class SyntaxHighlighter {
           );
         }
       });
+      // On current active cell content changed
+      this.tracker.currentWidget?.content.modelContentChanged.connect(() => {
+        this.tracker.activeCell && this.setSyntax(this.tracker.activeCell);
+      });
 
       // On current notebook change
       this.tracker.currentChanged.connect(tracker => {
-        console.log('notebook changed');
         tracker.restored.then(() => {
           // On notebook opened - cells added
           tracker.currentWidget?.model?.cells.changed.connect(
             (cellModels, change) => {
-              console.log(change.type, change.newIndex);
+              // console.log(change.type, change.newIndex);
               if (change.type === 'add') {
                 const widgets = tracker.currentWidget?.content.widgets;
                 if (widgets) {
+                  // console.log(widgets);
                   const cellWidget = widgets.find(widget => {
                     return (
                       widget.model.id === cellModels.get(change.newIndex).id
                     );
                   });
+                  // console.log(cellWidget);
                   cellWidget && this.setSyntax(cellWidget);
                 }
               }
             }
           );
+          // On notebook model content changed - activeCell
+          tracker.currentWidget?.model?.contentChanged.connect(() => {
+            this.tracker.activeCell && this.setSyntax(this.tracker.activeCell);
+          });
         });
-      });
-
-      // On current active cell content changed
-      this.tracker.currentWidget?.content.modelContentChanged.connect(() => {
-        // console.log('On current active cell content changed');
-        this.tracker.activeCell && this.setSyntax(this.tracker.activeCell);
       });
     });
   }

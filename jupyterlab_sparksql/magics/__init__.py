@@ -40,4 +40,5 @@ def load_ipython_extension(ipython):
 
         localStorage.setItem('sparkSqlWidgetIconUpdateEventId', sparkSqlWidgetIconUpdateEventId)
     """))
+    ipd.display(ipd.HTML("<style>.jp-OutputArea-output { width: 10% !important }</style>"))
     ipython.register_magics(SparkSQL)

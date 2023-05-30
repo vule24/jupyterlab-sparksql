@@ -14,10 +14,13 @@ def generate_classic_table(sdf, num_rows):
         'display.max_colwidth', None
     ):
         return ipd.HTML(
-            "<div style='max-height: 650px'>" +
+            "<div style='max-height: 650px;'>" +
             sdf.limit(num_rows).toPandas().style
                 .format(na_rep='null', precision=3, thousands=",", decimal=".")
                 .set_table_styles([
+                    {'selector': 'th', 'props': 'white-space: pre;'},
+                    {'selector': 'td', 'props': 'white-space: pre;'},
+                    {'selector': 'td', 'props': 'max-width: 200px; word-wrap: break-word'},
                     {'selector': 'thead th', 'props': 'position: sticky; top: 0; z-index: 1; background-color: var(--jp-layout-color0); border-bottom: var(--jp-border-width) solid var(--jp-border-color1) !important;'},
                     {'selector': 'thead th:first-child', 'props': 'position: sticky; left: 0; z-index: 2; background-color: var(--jp-layout-color0);'},
                     {'selector': 'tbody th', 'props': 'position: sticky; left: 0; z-index: 1; background-color: inherit;'},
@@ -33,7 +36,7 @@ def generate_table(sdf, num_rows):
     with pd.option_context(
         'display.max_rows', None, 
         'display.max_columns', None, 
-        'display.max_colwidth', None
+        'display.max_colwidth', None,
     ):
         dataframe = copy.deepcopy(sdf.limit(num_rows).toPandas())
         return (
@@ -43,6 +46,8 @@ def generate_table(sdf, num_rows):
                 dataframe.style
                     .format(na_rep='null', precision=3, thousands=",", decimal=".")
                     .set_table_styles([
+                        {'selector': 'th', 'props': 'white-space: pre;'},
+                        {'selector': 'td', 'props': 'white-space: pre;'},
                         {'selector': 'thead th', 'props': 'position: sticky; top: 0; z-index: 1; background-color: var(--jp-layout-color0); border-bottom: var(--jp-border-width) solid var(--jp-border-color1) !important;'},
                         {'selector': 'thead th:first-child', 'props': 'position: sticky; left: 0; z-index: 2; background-color: var(--jp-layout-color0);'},
                         {'selector': 'tbody th', 'props': 'position: sticky; left: 0; z-index: 1; background-color: inherit;'},
@@ -50,7 +55,7 @@ def generate_table(sdf, num_rows):
                     .set_table_attributes(
                         'style="border-collapse:separate"'
                     )
-                    .to_html() +
+                    .to_html(notebook=True) +
                 "</div>"
             )
         )
@@ -107,7 +112,7 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
         state['template'] = None
     
     
-    # elements
+    # Elements
     layout_btn_render_type = w.Layout(
         width='50px',
         margin='1px 2px 2px 2px')
@@ -138,6 +143,11 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
         button_style='warning',
         icon='save',
         layout=w.Layout(width='auto', margin='1px 2px 2px 2px'))
+    btn_submit_widget = w.Button(
+        disabled=False,
+        button_style='primary',
+        icon='thumb-tack',
+        layout=layout_btn_render_type)
     dropdown_x = w.Dropdown(
         options=dataframe.columns,
         description='X:',
@@ -165,31 +175,57 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
         layout=w.Layout(width='max-content', margin='1px 2px 2px 2px', padding='2px 0 0 0'))
 
     
-    # layout
-    output_types = w.HBox(
+    # Layout
+    viz_types = w.HBox(
         children=[
             btn_table, 
             btn_chart_line, 
             btn_chart_bar, 
-            btn_chart_scatter
+            btn_chart_scatter,
+            btn_submit_widget
         ], 
-        layout=w.Layout(align_items='center'))
+        layout=w.Layout(align_items='center')
+    )
     
-    console_box = w.HBox([
-        w.HBox([dropdown_x, dropdown_y, dropdown_aggregation]),
-        w.HBox([w.Label('LogX:', layout=w.Layout(margin='0 5px 2px 2px')), checkbox_logx, w.Label('LogY:', layout=w.Layout(margin='0 5px 2px 2px')), checkbox_logy]),
-    ])
+    tbl_console_box = w.HBox([btn_save_csv], layout=w.Layout(display='flex', justify_content='flex-end', flex_flow='row wrap'))
+    viz_console_box = w.HBox(
+        [
+            w.HBox([dropdown_x, dropdown_y, dropdown_aggregation]),
+            w.HBox([w.Label('LogX:', layout=w.Layout(margin='0 5px 2px 2px')), checkbox_logx, w.Label('LogY:', layout=w.Layout(margin='0 5px 2px 2px')), checkbox_logy]),
+        ], 
+        layout=w.Layout(display='flex', justify_content='flex-end', flex_flow='row wrap')
+    )
+
     console = w.Output(
         layout=w.Layout(
             display='flex', 
             align_items='center', 
-            margin='0px'))
+            margin='0px'
+        )
+    )
+    viz_output = w.Output()
     
-    output = w.Output(style="width: 100%; padding: 0px")
-    
-    
-    
-    # event
+    output = w.Output()
+    with output:
+        ipd.display(
+            w.VBox(
+                [
+                    w.HBox(
+                        [viz_types, console], 
+                        layout=w.Layout(
+                            display='flex',
+                            justify_content='space-between',
+                            align_items='center',
+                            flex_flow='row wrap'
+                        )
+                    ),
+                    viz_output
+                ],
+                layout=w.Layout(width='100%')
+            )
+        )
+
+    # Event
     
     def on_btn_save_csv_clicked(b):
         b.icon = 'spinner spin'
@@ -218,16 +254,17 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
         if b.icon == 'table':
             with console:
                 ipd.clear_output()
-            with output:
+                ipd.display(tbl_console_box)
+            with viz_output:
                 ipd.clear_output(wait=True)
-                ipd.display(table_html) 
+                ipd.display(table_html)
         else:
             state['current_render'] = b.icon.split('-')[-1]
             with console:
                 ipd.clear_output(wait=True)
-                ipd.display(console_box)
+                ipd.display(viz_console_box)
             plot(
-                output, 
+                viz_output, 
                 current_render=state['current_render'],
                 template=state['template'],
                 dataframe=dataframe,
@@ -244,7 +281,7 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
     
     def on_console_change(change):
         plot(
-            output, 
+            viz_output, 
             current_render=state['current_render'],
             template=state['template'],
             dataframe=dataframe,
@@ -259,20 +296,12 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
     dropdown_aggregation.observe(on_console_change, 'value')
     checkbox_logx.observe(on_console_change, 'value')
     checkbox_logy.observe(on_console_change, 'value')
+
+    def on_btn_submit_clicked(b):
+        pass
     
         
-    
     # render
     btn_table.click()
 
-    return w.VBox([
-        w.HBox(
-            [output_types, w.HBox([console]), btn_save_csv], 
-            layout=w.Layout(
-                display='flex',
-                justify_content='space-between',
-                align_items='center',
-            )
-        ),
-        output
-    ])
+    return output
