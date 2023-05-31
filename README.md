@@ -1,6 +1,6 @@
 # jupyterlab-sparksql
 
-[![Github Actions Status](https://github.com/vule24/jupyterlab-sparksql/actions/workflows/publish-release.jupyterlab-sparksql.yml/badge.svg)](https://github.com/vule24/jupyterlab-sparksql/actions/workflows/publish-release.jupyterlab-sparksql.yml)
+[![Github Actions Status](https://github.com/vule24/jupyterlab-sparksql/actions/workflows/publish-release.yml/badge.svg)](https://github.com/vule24/jupyterlab-sparksql/actions/workflows/publish-release.yml)
 A JupyterLab extension that provides SparkSQL magic commands, a SparkSQL syntax highlighter, and visualization widgets.
 
 ## Requirements
