@@ -11,9 +11,6 @@ on:
 jobs:
   publish_release:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./jupyterlab_sparksql
     steps:
       - uses: actions/checkout@v3
 
