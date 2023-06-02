@@ -4,7 +4,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
 from string import Formatter
 
-from .widget import generate_output_widget, generate_classic_table
+from .widget import generate_output_widget
 
 
 @magics_class
@@ -17,7 +17,6 @@ class SparkSQL(Magics):
     @magic_arguments()
     @argument('dataframe', metavar='DF', type=str, nargs='?')
     @argument('-n', '--num-rows', type=int, default=100)
-    @argument('-c', '--classic', action='store_true', default=False)
     @cell_magic
     def sql(self, line, cell):
         self.create_temp_view_for_available_dataframe()
@@ -28,16 +27,14 @@ class SparkSQL(Magics):
         sdf = self.spark.sql(query_str)
         if args.dataframe:
             self.shell.user_ns.update({args.dataframe: sdf})
-        if not args.classic:
-            return generate_output_widget(sdf, num_rows=args.num_rows, export_table_name=args.dataframe or None)
-        else:
-            return generate_classic_table(sdf, num_rows=args.num_rows)
+
+        return generate_output_widget(sdf, num_rows=args.num_rows, export_table_name=args.dataframe or None)
+
 
 
     @magic_arguments()
     @argument('dataframe', metavar='DF', type=str, nargs='?')
     @argument('-n', '--num-rows', type=int, default=20)
-    @argument('-c', '--classic', action='store_true', default=False)
     @line_magic
     def show(self, line):
         args = parse_argstring(self.sql, line)
@@ -46,10 +43,8 @@ class SparkSQL(Magics):
         sdf = self.shell.user_ns.get(args.dataframe, None)
         if not sdf:
             raise NameError(f"Name '{args.dataframe}' is not defined")
-        if not args.classic:
-            return generate_output_widget(sdf, num_rows=args.num_rows, export_table_name=args.dataframe)
-        else:
-            return generate_classic_table(sdf, num_rows=args.num_rows)
+        
+        return generate_output_widget(sdf, num_rows=args.num_rows, export_table_name=args.dataframe)
 
 
     def create_temp_view_for_available_dataframe(self):

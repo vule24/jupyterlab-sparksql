@@ -3,17 +3,45 @@ from datetime import datetime
 import IPython.display as ipd
 import ipywidgets as w
 import pandas as pd
-import copy, re
+import copy, re, json
 
 from pyspark.sql import functions as F
 pd.options.plotting.backend = "plotly"
 
 TABLE_STYLES = [
+    {"selector": '', 'props': [
+        ('border-bottom', '1px solid var(--jp-border-color1)'),
+    ]},
     {'selector': 'th', 'props': 'white-space: pre;'},
     {'selector': 'td', 'props': 'white-space: pre;'},
-    {'selector': 'thead th', 'props': 'position: sticky; top: 0; z-index: 1; background-color: var(--jp-layout-color0); border-bottom: var(--jp-border-width) solid var(--jp-border-color1) !important;'},
-    {'selector': 'thead th:first-child', 'props': 'position: sticky; left: 0; z-index: 2; background-color: var(--jp-layout-color0);'},
-    {'selector': 'tbody th', 'props': 'position: sticky; left: 0; z-index: 1; background-color: inherit;'},
+    {'selector': 'thead th', 'props': [
+        ('position', 'sticky'), 
+        ('top', '0'), 
+        ('z-index', '1'),
+        ('background-color', 'var(--jp-layout-color0)'),
+        ('border-right', 'var(--jp-border-width) solid var(--jp-border-color1) !important'),
+        ('border-bottom', 'var(--jp-border-width) solid var(--jp-border-color1) !important'),
+        ('border-top', 'var(--jp-border-width) solid var(--jp-border-color1) !important'),
+        ('cursor', 'pointer')
+    ]},
+    {'selector': 'thead th:first-child', 'props': [
+        ('position', 'sticky'), 
+        ('left', '0'), 
+        ('z-index', '2'), 
+        ('background-color', 'var(--jp-layout-color0)'),
+        ('border-left', 'var(--jp-border-width) solid var(--jp-border-color1) !important')
+    ]},
+    {'selector': 'tbody th', 'props': [
+        ('position', 'sticky'), 
+        ('left', '0'), 
+        ('z-index', '1'), 
+        ('background-color', 'inherit'),
+        ('border-left', 'var(--jp-border-width) solid var(--jp-border-color1) !important'),
+        ('border-right', 'var(--jp-border-width) solid var(--jp-border-color1) !important'),
+    ]},
+    {'selector': 'tbody td', 'props': [
+        ('border-right', 'var(--jp-border-width) solid var(--jp-border-color1) !important'),
+    ]}
 ]
 TABLE_ATTRIBUTES = 'style="border-collapse:separate"'
 TABLE_STYLE_FORMAT = dict(na_rep='null', precision=3, thousands=",", decimal=".")
@@ -34,28 +62,37 @@ def cast_decimal_to_float(sdf):
         if 'DecimalType' in str(sdf.schema[c].dataType):
             sdf = sdf.withColumn(c, F.col(c).cast('float'))
     return sdf
-
-
-def generate_classic_table(sdf, num_rows):
-     with pd.option_context(
-        'display.max_rows', None, 
-        'display.max_columns', None, 
-        'display.max_colwidth', None
-    ):
-        return ipd.HTML(
-            "<div style='max-height: 650px;'>"
-            + cast_decimal_to_float(sdf.limit(num_rows)).toPandas().style
-                .format(**TABLE_STYLE_FORMAT)
-                .set_table_styles(TABLE_STYLES)
-                .set_table_attributes(TABLE_ATTRIBUTES)
-                .to_html()
-            + "</div>"
-        )
      
 def extract_table_id(table_html):
     match = re.search(r'<table.*?id="(.*?)".*?>', table_html)
     if match:
         return match.group(1)
+
+def pd_dtypes_to_js_types(df):
+    dtype_map = {
+        'int8': 'Number',
+        'int16': 'Number',
+        'int32': 'Number',
+        'int64': 'Number',
+        'uint8': 'Number',
+        'uint16': 'Number',
+        'uint32': 'Number',
+        'uint64': 'Number',
+        'float8': 'Number',
+        'float16': 'Number',
+        'float32': 'Number',
+        'float64': 'Number',
+        'timedelta64[ns]': 'Number',
+        'bool': 'Boolean',
+        'datetime64[ns]': 'Date'
+    }
+    col_types = []
+    for col in df.columns:
+        if str(df[col].dtype) in dtype_map:
+            col_types.append(dtype_map[str(df[col].dtype)])
+        else:
+            col_types.append('String')
+    return json.dumps(['Number', *col_types])
 
 
 def generate_table(sdf, num_rows):
@@ -65,6 +102,8 @@ def generate_table(sdf, num_rows):
         'display.max_colwidth', None,
     ):
         dataframe = copy.deepcopy(cast_decimal_to_float(sdf.limit(num_rows)).toPandas())
+        dataframe.index = dataframe.index + 1
+
         table_html = ("<div style='max-height: 650px'>"
                         + dataframe.style
                             .format(**TABLE_STYLE_FORMAT)
@@ -72,7 +111,97 @@ def generate_table(sdf, num_rows):
                             .set_table_attributes(TABLE_ATTRIBUTES)
                             .to_html(notebook=True)
                         + "</div>")
+        
         table_id = extract_table_id(table_html)
+
+        # add sortTable to every column header
+        # Find the thead tag
+        thead = re.search(r'<thead>[\s\S]*?</thead>', table_html)
+        if thead:
+            # Extract the content of the thead tag
+            thead_content = thead.group()
+            # Find all th tags within the thead tag
+            th_tags = re.findall(r'<th.*?>.*?</th>', thead_content)
+        for i, tag in enumerate(th_tags):
+            tag_open = re.findall(r'<th[^e][^>]*>', tag)[0]
+            tag_content = re.findall(r'(?<=>)(.*)(?=</th>)', tag)[0] if i != 0 else '#'
+            new_tag = tag_open[:-1] + f' onclick="(function(){{ sortTable(\'{table_id}\', {i}) }})()">' + tag_content + ' <i class="fa fa-sort" style="color: var(--jp-inverse-layout-color3)"></i></th>'
+            table_html = table_html.replace(tag, new_tag)
+
+        table_html = f"""<script>
+            function parseType(value, n) {{
+                let type = {pd_dtypes_to_js_types(dataframe)}[n];
+                switch (type) {{
+                    case 'Number':
+                        if (value === 'inf') return Number.POSITIVE_INFINITY
+                        else if (value === '-inf') return Number.NEGATIVE_INFINITY
+                        else return Number(value);
+                    case 'Boolean':
+                        return value === 'true';
+                    case 'Date':
+                        return Date.parse(value);
+                    default:
+                        return value;
+                }}
+            }}
+            function sortTable(table_id, n) {{
+                let table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+                table = document.getElementById(table_id);
+                switching = true;
+                dir = "asc";
+                while (switching) {{
+                    switching = false;
+                    rows = table.getElementsByTagName("tr");
+                    for (i = 1; i < rows.length - 1; i++) {{
+                        shouldSwitch = false;
+                        x = rows[i].querySelectorAll("th, td")[n].innerHTML.toLowerCase();
+                        y = rows[i + 1].querySelectorAll("th, td")[n].innerHTML.toLowerCase();
+                        console.log('x=',x,'y=', y, {pd_dtypes_to_js_types(dataframe)}[n]);
+                        if (x == "null") {{
+                            shouldSwitch = true;
+                            break;
+                        }}
+                        x = parseType(x, n);
+                        y = parseType(y, n);
+                        
+                        if (dir == "asc") {{
+                            console.log('x > y: ', x>y);
+                            if (x > y) {{
+                                shouldSwitch = true;
+                                break;
+                            }}
+                        }} else if (dir == "desc") {{
+                            if (x < y) {{
+                                shouldSwitch = true;
+                                break;
+                            }}
+                        }}
+                        console.log('x=',x,'y=', y);
+                    }}
+                    if (shouldSwitch) {{
+                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                        switching = true;
+                        switchcount++;
+                    }} else {{
+                        if (switchcount == 0 && dir == "asc") {{
+                            dir = "desc";
+                            switching = true;
+                        }}
+                    }}
+                    console.log(shouldSwitch);
+                }}
+                let headers = table.getElementsByTagName("thead")[0].getElementsByTagName("th");
+                for (let header_idx = 0; header_idx < headers.length; header_idx++) {{
+                    headers[header_idx].innerHTML = headers[header_idx].innerHTML.replace(/<i[^>]*>[\s\S]*?<\/i>/g, '<i class="fa fa-sort" style="color: var(--jp-inverse-layout-color3)"></i>')
+                    if (header_idx == n) {{
+                        if (dir == "asc") headers[header_idx].innerHTML = headers[header_idx].innerHTML.replace(/<i[^>]*>[\s\S]*?<\/i>/g, '<i class="fa fa-sort-asc" style="color: var(--jp-brand-color1)"></i>')
+                        else if (dir == "desc") headers[header_idx].innerHTML = headers[header_idx].innerHTML.replace(/<i[^>]*>[\s\S]*?<\/i>/g, '<i class="fa fa-sort-desc" style="color: var(--jp-brand-color1)"></i>')
+                    }}
+                }}
+                
+            }}
+        </script>""" + table_html
+
         input_search = f"""
         <div class="lm-Widget p-Widget jupyter-widgets widget-inline-hbox widget-text" style="margin: 1px 2px 2px 2px; width: 150px;">
             <input type="text" id="inputSearch_{table_id}" placeholder="Search" onkeyup="(function () {{
@@ -99,6 +228,7 @@ def generate_table(sdf, num_rows):
             }}).call(this)">
         </div>
         """
+        
         return (
             dataframe,
             table_html,
@@ -372,6 +502,7 @@ def generate_output_widget(sdf, num_rows, export_table_name=None):
             dropdown_aggregation.options = AGG_LIMIT_LIST
         else:
             dropdown_aggregation.options = AGG_FULL_LIST
+        dropdown_aggregation.value = AGG_FULL_LIST[0]
     
     dropdown_y.observe(on_dropdown_y_selected, 'value')
 
